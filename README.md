@@ -1,4 +1,6 @@
-# PDF Print Tool
+# 🥷 PrintNinja
+
+> *Stealth PDF printing — no drivers, no system tools, no permission needed.*
 
 A full-stack web application for converting and printing PDF documents directly to network printers via IPP (Internet Printing Protocol), bypassing system print drivers. Built specifically to work on locked-down environments (like school Macs) where system tools like `lp` or `pdf-poppler` are unavailable or broken.
 
@@ -45,12 +47,14 @@ The application consists of two main parts:
 ## Installation
 
 1. Clone the repository:
+
    ```bash
    git clone <repository-url>
    cd print-tool
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
@@ -71,24 +75,27 @@ npm run dev
 ### Production Mode
 
 1. Build the frontend:
+
    ```bash
    npm run build
    ```
 
 2. Start the production server:
+
    ```bash
    npm start
    ```
+
    The server will serve the built frontend files and the API on `http://localhost:3001`.
 
 ## Project Structure
 
-```
+```text
 print-tool/
 ├── client/                 # React frontend source code
 │   ├── index.html          # HTML entry point
 │   └── src/
-│       ├── App.jsx         # Main React component
+│       ├── App.jsx         # Main React component (UI + preview modal)
 │       ├── main.jsx        # React entry point
 │       └── index.css       # Global styles
 ├── uploads/                # Temporary storage for uploaded PDFs and converted images
@@ -100,22 +107,19 @@ print-tool/
 
 ## How the Printing Pipeline Works
 
-1. **Upload**: PDF is uploaded to the server.
-2. **Convert**: `pdf-to-img` converts the PDF to 300 DPI PNGs (saved to disk to avoid memory issues) and generates low-res data URIs for frontend previews.
-3. **Configure**: User selects print settings (printer, range, copies, color, duplex) on the frontend.
-4. **Process**:
-   - Server reads the selected PNGs.
-   - `sharp` flattens the image (removes alpha channel, sets white background).
-   - If Grayscale is selected, a custom luma calculation (BT.601) is applied to the RGB pixels.
-   - `bitmap-to-pwg` encodes the raw pixels into PWG Raster format.
-5. **Concatenate**: The server strips the "RaS2" sync word from subsequent pages and concatenates all pages into a single buffer.
-6. **Print**: The buffer is sent as a single `Print-Job` operation via IPP, including job attributes like `sides` for duplex printing.
+1. **Upload**: PDF is uploaded to the server via drag-and-drop.
+2. **Convert**: `pdf-to-img` converts the PDF to 300 DPI PNGs saved on disk; low-res thumbnails are sent to the browser.
+3. **Preview**: Clicking **Preview & Print** opens a full-screen modal showing exactly which pages will be sent, filtered by your page range, with a grayscale CSS filter applied if B&W is selected. Pages that appear nearly black trigger a `⚠️ Page looks very dark` warning banner.
+4. **Confirm**: Clicking **Confirm & Print** sends the job.
+5. **Encode**: Server reads the selected PNGs, flattens alpha → white via `sharp`, runs a blank-page luminance check (warns if mean luma < 10/255), then encodes pixels to PWG Raster with `bitmap-to-pwg`. Grayscale uses BT.601 luma (0.299R + 0.587G + 0.114B) computed per-pixel while keeping 3-channel RGB for the encoder.
+6. **Concatenate**: Strips the `RaS2` sync word from pages 2+ and concatenates all pages into one buffer.
+7. **Print**: Sent as a single `Print-Job` IPP operation with the `sides` attribute for duplex, streaming real-time progress back via SSE.
 
 ## Troubleshooting
 
 - **Printer rejects job**: Ensure the printer supports `image/pwg-raster`. You can query supported formats using an IPP tool.
-- **Black pages**: This can happen if the color space encoding is incorrect. The tool forces RGB encoding and calculates grayscale manually to avoid issues with printers expecting 3-byte pixels.
-- **Slow printing**: The tool concatenates pages into a single job to maximize speed. If it's still slow, check network connectivity to the printer.
+- **Black pages**: The tool forces RGB encoding and calculates grayscale manually. The server also logs a warning to the UI if it detects a near-black page before it hits the printer.
+- **Slow printing**: All pages are concatenated into a single IPP job for maximum speed. If it's still slow, check network connectivity to the printer.
 
 ## License
 

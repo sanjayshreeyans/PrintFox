@@ -20,6 +20,8 @@ const SpinnerIcon = ({ size = 18 }) => (
 );
 const FileIcon = () => <Icon d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8" />;
 const TrashIcon = () => <Icon d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />;
+const EyeIcon  = () => <Icon d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />;
+const XIcon    = () => <Icon d="M18 6L6 18M6 6l12 12" />;
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = {
@@ -176,6 +178,84 @@ const s = {
   }),
 };
 
+// ─── PreviewPageCard (with dark-page heuristic) ──────────────────────────────
+function PreviewPageCard({ page, idx, colorMode }) {
+  const [darkWarning, setDarkWarning] = React.useState(false);
+  const imgRef = React.useRef();
+
+  const checkLuminance = React.useCallback((img) => {
+    try {
+      const canvas = document.createElement('canvas');
+      const scale  = 0.15; // sample at 15% size — fast and accurate enough
+      canvas.width  = Math.max(1, Math.round(img.naturalWidth  * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let sum = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        sum += 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+      }
+      const meanLuma = sum / (d.length / 4);
+      setDarkWarning(meanLuma < 18); // threshold: almost entirely black
+    } catch (_) {}
+  }, []);
+
+  return (
+    <div style={{
+      borderRadius: 12, overflow: 'hidden',
+      border: darkWarning ? '2px solid #f59e0b' : '1px solid #2e3350',
+      background: '#22263a', position: 'relative',
+      boxShadow: darkWarning ? '0 0 0 3px rgba(245,158,11,0.25)' : 'none',
+      transition: 'border 0.2s',
+    }}>
+      <img
+        ref={imgRef}
+        src={page.dataUrl}
+        alt={`Page ${page.index}`}
+        style={{ width: '100%', display: 'block',
+          filter: colorMode === 'grayscale' ? 'grayscale(100%)' : 'none',
+        }}
+        onLoad={e => checkLuminance(e.currentTarget)}
+        crossOrigin="anonymous"
+      />
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        padding: '8px 12px',
+        background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        fontSize: 11, fontWeight: 600, color: '#f1f5f9',
+      }}>
+        <span>Page {page.index}</span>
+        <span style={{ color: '#94a3b8' }}>{(page.size / 1024).toFixed(0)} KB</span>
+      </div>
+      {darkWarning && (
+        <div style={{
+          position: 'absolute', top: 8, left: 0, right: 0,
+          display: 'flex', justifyContent: 'center',
+        }}>
+          <span style={{
+            background: 'rgba(245,158,11,0.92)', color: '#000',
+            borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700,
+          }}>
+            ⚠️ Page looks very dark
+          </span>
+        </div>
+      )}
+      {/* Grayscale B&W badge */}
+      {colorMode === 'grayscale' && (
+        <div style={{
+          position: 'absolute', top: 8, right: 8,
+          background: 'rgba(0,0,0,0.6)', color: '#cbd5e1',
+          borderRadius: 20, padding: '3px 8px', fontSize: 10, fontWeight: 600,
+        }}>
+          B&W
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [pages, setPages]             = useState([]);
@@ -196,7 +276,26 @@ export default function App() {
   const [toast, setToast]             = useState(null);
   const [selectedPage, setSelectedPage] = useState(null);
   const [printDone, setPrintDone]     = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const fileRef = useRef();
+
+  // Parse "1-3, 5, 7-9" → array of 1-based page numbers
+  const parsePageRangeFn = (str, total) => {
+    if (!str || !str.trim()) return Array.from({ length: total }, (_, i) => i + 1);
+    const result = new Set();
+    for (const part of str.split(',')) {
+      const sides = part.trim().split('-').map(n => parseInt(n.trim(), 10));
+      if (isNaN(sides[0])) continue;
+      if (sides.length === 1 || isNaN(sides[1])) {
+        if (sides[0] >= 1 && sides[0] <= total) result.add(sides[0]);
+      } else {
+        for (let i = sides[0]; i <= Math.min(sides[1], total); i++) {
+          if (i >= 1) result.add(i);
+        }
+      }
+    }
+    return [...result].sort((a, b) => a - b);
+  };
 
   const showToast = (msg, type = 'info') => {
     setToast({ msg, type });
@@ -278,6 +377,8 @@ export default function App() {
             setEncodingProgress(p => ({ ...p, done: evt.page }));
           } else if (evt.type === 'sending') {
             setPrintProgress(p => ({ ...p, totalPages: evt.totalPages, copies: evt.copies, sizeKB: evt.sizeKB }));
+          } else if (evt.type === 'warning') {
+            showToast(`⚠️ ${evt.message}`, 'info');
           } else if (evt.type === 'progress') {
             setPrintProgress(p => ({ ...p, copy: evt.copy, copies: evt.copies, status: evt.status }));
           } else if (evt.type === 'complete') {
@@ -311,8 +412,8 @@ export default function App() {
         <div style={s.logo}>
           <PrintIcon />
         </div>
-        <span style={s.headerTitle}>PDF Print Tool</span>
-        <span style={s.headerSub}>300 DPI · Pure JavaScript · No system tools</span>
+        <span style={s.headerTitle}>🥷 PrintNinja</span>
+        <span style={s.headerSub}>300 DPI · Pure JS · No system tools · Stealth printing</span>
       </header>
 
       <main style={s.main}>
@@ -615,15 +716,15 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Print Button */}
+                {/* Print Button → opens preview */}
                 <button
                   style={s.btn('primary', !pages.length || !printerUri || printing || converting)}
                   disabled={!pages.length || !printerUri || printing || converting}
-                  onClick={handlePrint}
+                  onClick={() => setShowPreview(true)}
                 >
                   {printing
                     ? <><SpinnerIcon /> {encodingProgress.done < encodingProgress.total ? 'Encoding…' : 'Printing…'}</>
-                    : <><PrintIcon /> Print
+                    : <><EyeIcon /> Preview &amp; Print
                         {pages.length > 0 && ` · ${pageRange
                           ? `pages ${pageRange}`
                           : `${pages.length} page${pages.length > 1 ? 's' : ''}`
@@ -669,6 +770,121 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* ── Print Preview Modal ─────────────────────────────────────── */}
+      {showPreview && (() => {
+        const previewPages = parsePageRangeFn(pageRange, pages.length)
+          .map(n => pages.find(p => p.index === n))
+          .filter(Boolean);
+
+        const duplexLabel = duplex === 'one-sided' ? 'One-sided'
+          : duplex === 'two-sided-long-edge' ? 'Duplex — Long edge (book)'
+          : 'Duplex — Short edge (calendar)';
+
+        // Heuristic: warn about suspiciously dark pages (solid-black covers)
+        // We sample the thumbnail's average luminance via a canvas.
+        // This is done lazily in the component via data attrs set below.
+        const printerLabel = printers.find(p => p.uri === printerUri)?.name || printerUri;
+
+        return (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.82)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex', flexDirection: 'column',
+            animation: 'slideIn 0.2s ease',
+          }}
+            onKeyDown={e => e.key === 'Escape' && setShowPreview(false)}
+            tabIndex={-1}
+          >
+            {/* Modal header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 14,
+              padding: '18px 28px', borderBottom: '1px solid #2e3350',
+              background: 'rgba(26,29,39,0.95)', flexShrink: 0,
+            }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                background: 'linear-gradient(135deg,#6366f1,#818cf8)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <EyeIcon />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#f1f5f9' }}>
+                  Print Preview
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                  {previewPages.length} page{previewPages.length !== 1 ? 's' : ''} will be sent
+                  &nbsp;·&nbsp;Previews shown at reduced resolution (actual print: 300 DPI)
+                </div>
+              </div>
+              <button onClick={() => setShowPreview(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 8 }}>
+                <XIcon />
+              </button>
+            </div>
+
+            {/* Settings bar */}
+            <div style={{
+              display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+              padding: '12px 28px', borderBottom: '1px solid #2e3350',
+              background: 'rgba(26,29,39,0.75)', flexShrink: 0,
+            }}>
+              {[
+                ['🖨️', printerLabel],
+                ['📄', `${previewPages.length} page${previewPages.length !== 1 ? 's' : ''}`],
+                ['🔁', `${copies} cop${copies !== 1 ? 'ies' : 'y'}`],
+                ['🎨', colorMode === 'color' ? 'Color' : 'Grayscale (B&W)'],
+                ['📐', duplexLabel],
+                ['📌', jobName],
+              ].map(([icon, val]) => (
+                <span key={val} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: '#22263a', border: '1px solid #2e3350',
+                  borderRadius: 20, padding: '5px 12px', fontSize: 12, color: '#f1f5f9',
+                }}>
+                  {icon} {val}
+                </span>
+              ))}
+            </div>
+
+            {/* Page grid */}
+            <div style={{
+              flex: 1, overflowY: 'auto',
+              padding: '28px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: 20, alignContent: 'start',
+            }}>
+              {previewPages.map((page, idx) => (
+                <PreviewPageCard key={page.index} page={page} idx={idx}
+                  colorMode={colorMode} />
+              ))}
+            </div>
+
+            {/* Footer CTA */}
+            <div style={{
+              display: 'flex', gap: 12, padding: '18px 28px',
+              borderTop: '1px solid #2e3350',
+              background: 'rgba(26,29,39,0.95)', flexShrink: 0,
+              justifyContent: 'flex-end',
+            }}>
+              <button onClick={() => setShowPreview(false)}
+                style={{ ...s.btn('ghost'), width: 'auto', padding: '12px 28px' }}>
+                Cancel
+              </button>
+              <button
+                style={{ ...s.btn('primary'), width: 'auto', padding: '12px 36px',
+                  fontSize: 15 }}
+                onClick={() => { setShowPreview(false); handlePrint(); }}
+              >
+                <PrintIcon /> Confirm &amp; Print
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Toast */}
       {toast && (

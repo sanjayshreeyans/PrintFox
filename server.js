@@ -160,6 +160,19 @@ app.post('/api/print', async (req, res) => {
       const { width, height } = info;
       const isGray = (colorMode === 'grayscale');
 
+      // ── Blank / Black-page guard ──────────────────────────────────────────
+      // Sample mean luminance. If the whole page is nearly black (e.g. <10/255)
+      // it almost certainly indicates a rendering or encoding bug — warn the
+      // client so the user can see it in the UI before it hits the printer.
+      let lumaSum = 0;
+      for (let i = 0; i < data.length; i += 3) {
+        lumaSum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      }
+      const meanLuma = lumaSum / (data.length / 3);
+      if (meanLuma < 10) {
+        send({ type: 'warning', page: p + 1, message: `Page ${indices[p] + 1} is almost entirely black (mean luma ${meanLuma.toFixed(1)}). This may indicate a rendering bug. The page will still be sent.` });
+      }
+
       const getPixel = (x, y) => {
         const i = (y * width + x) * 3;
         const r = data[i], g = data[i + 1], b = data[i + 2];

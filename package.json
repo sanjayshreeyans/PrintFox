@@ -1,7 +1,7 @@
 {
-  "name": "print-tool",
+  "name": "printninja",
   "version": "1.0.0",
-  "description": "",
+  "description": "Stealth PDF printer – no system tools, pure JS, direct IPP/PWG printing at 300 DPI",
   "main": "index.js",
   "scripts": {
     "dev": "node server.js & npx vite",
