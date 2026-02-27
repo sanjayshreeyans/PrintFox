@@ -585,10 +585,16 @@ export default function App() {
                         🔍 Finding your printer's IPP address
                       </p>
                       {[
-                        { os: '🍎 macOS', cmd: 'lpstat -v', note: 'Look for ipp:// lines — copy the URI directly.' },
-                        { os: '🐧 Linux', cmd: 'lpstat -v', note: 'Same as macOS.' },
-                        { os: '🪟 Windows', cmd: 'Get-Printer | Get-PrinterPort | Select Name,PrinterHostAddress', note: 'Run in PowerShell. Use the IP to build: ipp://<IP>:631/ipp/print' },
-                        { os: '🌐 Any (browser)', cmd: null, note: 'Go to your printer\'s web interface (type its IP in browser). Look under Settings → Network → IPP.' },
+                        {
+                          os: '🍎 macOS / 🐧 Linux (recommended)',
+                          cmd: 'ippfind -s -p',
+                          note: 'Bundled with CUPS — works even on locked-down Macs. Outputs the printer name and its ipp:// URI directly.',
+                        },
+                        {
+                          os: '🌐 Any OS (browser)',
+                          cmd: null,
+                          note: "Type your printer's IP into a browser. Open Settings → Network → IPP to find the URI.",
+                        },
                       ].map(({ os, cmd, note }) => (
                         <div key={os} style={{ marginBottom: 8, paddingBottom: 8,
                           borderBottom: '1px solid #2e3350' }}>

@@ -24,52 +24,43 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
-// GET /api/printers — discover local IPP printers (macOS/Linux via lpstat, Windows via PowerShell)
+// GET /api/printers — auto-discover IPP printers on the local network using ippfind
+// ippfind is bundled with CUPS and available on macOS (10.11+) and most Linux distros.
+// `ippfind -s -p` outputs alternating lines: friendly name, then IPP URI.
+// Falls back to an empty list if ippfind is not available.
 app.get('/api/printers', async (req, res) => {
   try {
     const { execSync } = await import('child_process');
-    const isWindows = process.platform === 'win32';
     const printers = [];
 
-    if (isWindows) {
-      // PowerShell: list printers that have a network port with a PrinterHostAddress
-      const psScript = [
-        'Get-Printer | ForEach-Object {',
-        '  $p = $_;',
-        '  $port = Get-PrinterPort -Name $p.PortName -ErrorAction SilentlyContinue;',
-        '  if ($port.PrinterHostAddress) {',
-        '    Write-Output ($p.Name + "|" + $port.PrinterHostAddress)',
-        '  }',
-        '}',
-      ].join(' ');
-      const raw = execSync(
-        `powershell -NoProfile -Command "${psScript}"`,
-        { encoding: 'utf8', timeout: 8000 }
-      );
-      for (const line of raw.split('\n')) {
-        const [name, host] = line.trim().split('|');
-        if (name && host) {
-          printers.push({ name: name.trim(), uri: `ipp://${host.trim()}:631/ipp/print` });
+    // Primary: ippfind (CUPS-bundled, works on macOS + Linux, no system printer config needed)
+    try {
+      const raw = execSync('ippfind -s -p 2>/dev/null', { encoding: 'utf8', timeout: 8000 });
+      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      // Output format: name\nuri\nname\nuri\n...
+      for (let i = 0; i + 1 < lines.length; i += 2) {
+        const name = lines[i];
+        const uri  = lines[i + 1];
+        if (uri && (uri.startsWith('ipp://') || uri.startsWith('ipps://'))) {
+          printers.push({ name, uri });
         }
       }
-    } else {
-      // macOS / Linux
-      const raw = execSync('lpstat -v 2>/dev/null || echo ""', { encoding: 'utf8', timeout: 5000 });
-      for (const line of raw.split('\n')) {
-        const match = line.match(/device for (.+?):\s+(.+)/);
-        if (match) {
-          const uri = match[2].trim();
-          // Only include IPP/IPPS URIs — skip usb://, dnssd://, etc.
-          if (uri.startsWith('ipp://') || uri.startsWith('ipps://')) {
-            printers.push({ name: match[1].trim(), uri });
-          }
+    } catch { /* ippfind not available */ }
+
+    // Fallback: lpstat -v (only works if system printers are configured — often empty on locked-down Macs)
+    if (printers.length === 0) {
+      try {
+        const raw = execSync('lpstat -v 2>/dev/null', { encoding: 'utf8', timeout: 5000 });
+        for (const line of raw.split('\n')) {
+          const match = line.match(/device for (.+?):\s+(ipps?:\/\/.+)/);
+          if (match) printers.push({ name: match[1].trim(), uri: match[2].trim() });
         }
-      }
+      } catch { /* ignore */ }
     }
 
-    res.json({ printers, platform: process.platform });
+    res.json({ printers });
   } catch {
-    res.json({ printers: [], platform: process.platform });
+    res.json({ printers: [] });
   }
 });
 

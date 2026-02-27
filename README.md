@@ -18,44 +18,33 @@ A full-stack web application for converting and printing PDF documents directly 
   - Color or Grayscale (B&W) modes
   - Duplex printing (One-sided, Long-edge, Short-edge)
 - **Fast Multi-page Printing**: Concatenates all pages into a single PWG stream — no per-page delays.
-- **Cross-Platform**: Works on macOS, Linux, and Windows (Node.js 18+).
+- **Works on Locked-Down Macs**: Uses `ippfind` (CUPS-bundled) for printer discovery — no system printer configuration needed.
 - **Modern React UI**: Drag-and-drop upload, page previews, real-time progress tracking.
 
 ## Finding Your Printer's IPP Address
 
-You need an IPP URI like `ipp://192.168.1.x:631/ipp/print`. Here's how to find it on each OS:
-
-### macOS / Linux
+PrintFox auto-discovers printers on startup using `ippfind` (bundled with CUPS on macOS 10.11+ and most Linux distros). You can also run it yourself in a terminal to verify:
 
 ```bash
-lpstat -v
+ippfind -s -p
 ```
 
-Look for lines containing `ipp://` — copy the full URI. Example output:
+Example output:
 
 ```text
-device for HP_LaserJet: ipp://192.168.1.42:631/ipp/print
+HP Smart Tank 6000 series [E77C3F]
+ipp://HP7C4D8FE77C3F.local:631/ipp/print
 ```
 
-### Windows (PowerShell)
+Copy the `ipp://` line directly into the **Add printer manually** form if auto-discovery doesn't pick it up.
 
-```powershell
-Get-Printer | ForEach-Object {
-  $p = $_
-  $port = Get-PrinterPort -Name $p.PortName -ErrorAction SilentlyContinue
-  if ($port.PrinterHostAddress) {
-    Write-Output ($p.Name + " → " + $port.PrinterHostAddress)
-  }
-}
-```
+> **Why not `lpstat -v`?** On locked-down school/work Macs, `lpstat` returns *"No destinations added"* because you can't add system printers — but `ippfind` scans the network directly via mDNS/Bonjour and works without any system printer configuration.
 
-Take the IP address and build the URI: `ipp://<IP>:631/ipp/print`
+### Fallback: Printer web interface
 
-### Any OS (browser)
+Type your printer's IP address into a browser and look under **Settings → Network → IPP** for the URI path.
 
-Type your printer's IP address into a browser. Open **Settings → Network → IPP** (varies by printer brand) to find the IPP port and path.
-
-> **Tip:** Once you enter a valid URI in PrintFox and click **💾 Save**, it's stored in your browser and will be there every time you reload.
+URI format: `ipp://<printer-ip>:631/ipp/print`
 
 ## Architecture
 
@@ -64,7 +53,7 @@ The application consists of two parts:
 1. **Express Backend (`server.js`)**:
    - Handles PDF uploads and stores them temporarily in `uploads/`.
    - Converts PDFs to high-resolution PNGs using `pdf-to-img` (based on `pdfjs-dist`).
-   - Auto-discovers local printers: `lpstat` on macOS/Linux, PowerShell `Get-Printer` on Windows.
+   - Auto-discovers local printers via `ippfind -s -p` (CUPS-bundled, works on locked-down Macs); falls back to `lpstat -v`.
    - Processes print jobs: reads PNGs with `sharp`, encodes to PWG Raster, concatenates, sends via IPP.
    - Streams progress back to the client using Server-Sent Events (SSE).
    - Detects near-black pages (mean luma < 10) and emits a warning before sending.
