@@ -268,6 +268,14 @@ export default function App() {
   const [encodingProgress, setEncodingProgress] = useState({ done: 0, total: 0 });
   const [printerUri, setPrinterUri]   = useState('');
   const [printers, setPrinters]       = useState([]);
+  const [savedPrinters, setSavedPrinters] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('printfox_printers') || '[]'); }
+    catch { return []; }
+  });
+  const [showAddPrinter, setShowAddPrinter] = useState(false);
+  const [newPrinterUri, setNewPrinterUri]   = useState('');
+  const [newPrinterName, setNewPrinterName] = useState('');
+  const [showHowToFind, setShowHowToFind]   = useState(false);
   const [jobName, setJobName]         = useState('PDF Print Job');
   const [pageRange, setPageRange]     = useState('');
   const [copies, setCopies]           = useState(1);
@@ -302,16 +310,46 @@ export default function App() {
     setTimeout(() => setToast(null), 4000);
   };
 
+  // Persist savedPrinters to localStorage whenever they change
+  useEffect(() => {    localStorage.setItem('printfox_printers', JSON.stringify(savedPrinters));
+  }, [savedPrinters]);
+
   // Load available printers on mount
   useEffect(() => {
     fetch('/api/printers')
       .then(r => r.json())
       .then(({ printers }) => {
         setPrinters(printers);
-        if (printers.length > 0) setPrinterUri(printers[0].uri);
+        // Pick first available: prefer saved list, then auto-discovered
+        const saved = JSON.parse(localStorage.getItem('printfox_printers') || '[]');
+        if (saved.length > 0) setPrinterUri(saved[0].uri);
+        else if (printers.length > 0) setPrinterUri(printers[0].uri);
       })
       .catch(() => {});
   }, []);
+
+  const savePrinter = (uri, name) => {
+    const trimUri  = uri.trim();
+    const trimName = name.trim() || trimUri;
+    if (!trimUri || !trimUri.startsWith('ipp')) {
+      showToast('URI must start with ipp:// or ipps://', 'error');
+      return false;
+    }
+    setSavedPrinters(prev => {
+      if (prev.some(p => p.uri === trimUri)) return prev; // already saved
+      return [...prev, { uri: trimUri, name: trimName }];
+    });
+    setPrinterUri(trimUri);
+    return true;
+  };
+
+  const deleteSavedPrinter = (uri) => {
+    setSavedPrinters(prev => {
+      const next = prev.filter(p => p.uri !== uri);
+      if (printerUri === uri) setPrinterUri(next[0]?.uri || '');
+      return next;
+    });
+  };
 
   const handleFile = useCallback(async (file) => {
     if (!file || file.type !== 'application/pdf') {
@@ -412,7 +450,7 @@ export default function App() {
         <div style={s.logo}>
           <PrintIcon />
         </div>
-        <span style={s.headerTitle}>� PrintFox</span>
+        <span style={s.headerTitle}>🦊 PrintFox</span>
         <span style={s.headerSub}>300 DPI · Pure JS · No system tools · Clever printing</span>
       </header>
 
@@ -530,21 +568,131 @@ export default function App() {
 
                 {/* Printer URI */}
                 <div>
-                  <label style={s.label}>Printer</label>
-                  {printers.length > 0 ? (
-                    <select style={{ ...s.input, cursor: 'pointer' }} value={printerUri}
-                      onChange={e => setPrinterUri(e.target.value)}>
-                      {printers.map(p => (
-                        <option key={p.uri} value={p.uri}>{p.name}</option>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+                    <label style={{ ...s.label, marginBottom: 0, flex: 1 }}>Printer</label>
+                    <button onClick={() => setShowHowToFind(v => !v)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer',
+                        color: '#6366f1', fontSize: 11, fontWeight: 600, padding: '2px 6px' }}>
+                      {showHowToFind ? '▲ Hide help' : '❓ How to find the address'}
+                    </button>
+                  </div>
+
+                  {/* How-to-find collapsible */}
+                  {showHowToFind && (
+                    <div style={{ background: '#0f1117', border: '1px solid #2e3350',
+                      borderRadius: 10, padding: '12px 14px', marginBottom: 10, fontSize: 11 }}>
+                      <p style={{ color: '#818cf8', fontWeight: 700, marginBottom: 8 }}>
+                        🔍 Finding your printer's IPP address
+                      </p>
+                      {[
+                        { os: '🍎 macOS', cmd: 'lpstat -v', note: 'Look for ipp:// lines — copy the URI directly.' },
+                        { os: '🐧 Linux', cmd: 'lpstat -v', note: 'Same as macOS.' },
+                        { os: '🪟 Windows', cmd: 'Get-Printer | Get-PrinterPort | Select Name,PrinterHostAddress', note: 'Run in PowerShell. Use the IP to build: ipp://<IP>:631/ipp/print' },
+                        { os: '🌐 Any (browser)', cmd: null, note: 'Go to your printer\'s web interface (type its IP in browser). Look under Settings → Network → IPP.' },
+                      ].map(({ os, cmd, note }) => (
+                        <div key={os} style={{ marginBottom: 8, paddingBottom: 8,
+                          borderBottom: '1px solid #2e3350' }}>
+                          <div style={{ color: '#f1f5f9', fontWeight: 600, marginBottom: 3 }}>{os}</div>
+                          {cmd && (
+                            <code style={{ display: 'block', background: '#1a1d27', color: '#22c55e',
+                              padding: '4px 8px', borderRadius: 6, marginBottom: 3,
+                              fontFamily: 'monospace', fontSize: 10, wordBreak: 'break-all' }}>
+                              {cmd}
+                            </code>
+                          )}
+                          <div style={{ color: '#64748b' }}>{note}</div>
+                        </div>
                       ))}
-                      <option value="__custom__">✏️ Enter custom URI…</option>
-                    </select>
-                  ) : null}
-                  {(printers.length === 0 || printerUri === '__custom__') && (
-                    <input style={s.input}
-                      placeholder="ipp://printer.local:631/ipp/print"
-                      value={printerUri === '__custom__' ? '' : printerUri}
-                      onChange={e => setPrinterUri(e.target.value)} />
+                      <p style={{ color: '#64748b', marginTop: 4 }}>
+                        URI format: <code style={{ color: '#818cf8' }}>ipp://192.168.1.x:631/ipp/print</code>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Combined auto-discovered + saved printer list */}
+                  {(() => {
+                    const allPrinters = [
+                      ...savedPrinters.map(p => ({ ...p, saved: true })),
+                      ...printers
+                        .filter(p => !savedPrinters.some(s => s.uri === p.uri))
+                        .map(p => ({ ...p, saved: false })),
+                    ];
+                    return allPrinters.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                        {allPrinters.map(p => (
+                          <div key={p.uri} style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            background: printerUri === p.uri ? 'rgba(99,102,241,0.15)' : '#22263a',
+                            border: `1px solid ${printerUri === p.uri ? '#6366f1' : '#2e3350'}`,
+                            borderRadius: 8, padding: '8px 12px', cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }} onClick={() => setPrinterUri(p.uri)}>
+                            <span style={{ fontSize: 14 }}>{p.saved ? '💾' : '🔍'}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {p.name}
+                              </div>
+                              <div style={{ fontSize: 10, color: '#64748b',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {p.uri}
+                              </div>
+                            </div>
+                            {printerUri === p.uri && <CheckIcon />}
+                            {p.saved && (
+                              <button onClick={e => { e.stopPropagation(); deleteSavedPrinter(p.uri); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer',
+                                  color: '#ef4444', padding: '2px 4px', fontSize: 14 }}
+                                title="Remove saved printer">✕</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Add / type custom URI */}
+                  {!showAddPrinter ? (
+                    <button onClick={() => setShowAddPrinter(true)}
+                      style={{ ...s.btn('ghost'), padding: '8px 14px', fontSize: 12 }}>
+                      ＋ Add printer manually
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6,
+                      background: '#0f1117', border: '1px solid #2e3350',
+                      borderRadius: 10, padding: 12 }}>
+                      <input style={{ ...s.input, fontSize: 12 }}
+                        placeholder="Name (e.g. HP LaserJet Office)"
+                        value={newPrinterName}
+                        onChange={e => setNewPrinterName(e.target.value)} />
+                      <input style={{ ...s.input, fontSize: 12 }}
+                        placeholder="ipp://192.168.1.x:631/ipp/print"
+                        value={newPrinterUri}
+                        onChange={e => setNewPrinterUri(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            if (savePrinter(newPrinterUri, newPrinterName)) {
+                              setNewPrinterUri(''); setNewPrinterName(''); setShowAddPrinter(false);
+                              showToast('✓ Printer saved!', 'success');
+                            }
+                          }
+                        }} />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button style={{ ...s.btn('primary'), padding: '8px 14px', fontSize: 12 }}
+                          onClick={() => {
+                            if (savePrinter(newPrinterUri, newPrinterName)) {
+                              setNewPrinterUri(''); setNewPrinterName(''); setShowAddPrinter(false);
+                              showToast('✓ Printer saved!', 'success');
+                            }
+                          }}>
+                          💾 Save
+                        </button>
+                        <button style={{ ...s.btn('ghost'), padding: '8px 14px', fontSize: 12 }}
+                          onClick={() => { setShowAddPrinter(false); setNewPrinterUri(''); setNewPrinterName(''); }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
 

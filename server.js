@@ -24,21 +24,52 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
-// GET /api/printers — discover local IPP printers
+// GET /api/printers — discover local IPP printers (macOS/Linux via lpstat, Windows via PowerShell)
 app.get('/api/printers', async (req, res) => {
   try {
     const { execSync } = await import('child_process');
-    const raw = execSync('lpstat -v 2>/dev/null || echo ""', { encoding: 'utf8' });
+    const isWindows = process.platform === 'win32';
     const printers = [];
-    for (const line of raw.split('\n')) {
-      const match = line.match(/device for (.+?):\s+(.+)/);
-      if (match) {
-        printers.push({ name: match[1].trim(), uri: match[2].trim() });
+
+    if (isWindows) {
+      // PowerShell: list printers that have a network port with a PrinterHostAddress
+      const psScript = [
+        'Get-Printer | ForEach-Object {',
+        '  $p = $_;',
+        '  $port = Get-PrinterPort -Name $p.PortName -ErrorAction SilentlyContinue;',
+        '  if ($port.PrinterHostAddress) {',
+        '    Write-Output ($p.Name + "|" + $port.PrinterHostAddress)',
+        '  }',
+        '}',
+      ].join(' ');
+      const raw = execSync(
+        `powershell -NoProfile -Command "${psScript}"`,
+        { encoding: 'utf8', timeout: 8000 }
+      );
+      for (const line of raw.split('\n')) {
+        const [name, host] = line.trim().split('|');
+        if (name && host) {
+          printers.push({ name: name.trim(), uri: `ipp://${host.trim()}:631/ipp/print` });
+        }
+      }
+    } else {
+      // macOS / Linux
+      const raw = execSync('lpstat -v 2>/dev/null || echo ""', { encoding: 'utf8', timeout: 5000 });
+      for (const line of raw.split('\n')) {
+        const match = line.match(/device for (.+?):\s+(.+)/);
+        if (match) {
+          const uri = match[2].trim();
+          // Only include IPP/IPPS URIs — skip usb://, dnssd://, etc.
+          if (uri.startsWith('ipp://') || uri.startsWith('ipps://')) {
+            printers.push({ name: match[1].trim(), uri });
+          }
+        }
       }
     }
-    res.json({ printers });
+
+    res.json({ printers, platform: process.platform });
   } catch {
-    res.json({ printers: [] });
+    res.json({ printers: [], platform: process.platform });
   }
 });
 

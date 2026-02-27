@@ -1,4 +1,4 @@
-# � PrintFox
+# 🦊 PrintFox
 
 > *Clever PDF printing — no drivers, no system tools, no permission needed.*
 
@@ -10,34 +10,71 @@ A full-stack web application for converting and printing PDF documents directly 
 - **High-Quality Output**: Converts PDFs to 300 DPI images using `pdfjs-dist`.
 - **Direct IPP Printing**: Communicates directly with network printers using the `ipp` protocol.
 - **PWG Raster Support**: Encodes images to PWG Raster format (`bitmap-to-pwg`), widely supported by modern printers (e.g., HP).
+- **Saved Printers**: Manually added printers are stored in `localStorage` and persist across sessions.
+- **Print Preview**: See exactly what will be sent before confirming, with dark-page warnings.
 - **Advanced Print Controls**:
   - Page range selection
   - Multiple copies
   - Color or Grayscale (B&W) modes
   - Duplex printing (One-sided, Long-edge, Short-edge)
-- **Fast Multi-page Printing**: Concatenates all pages into a single PWG stream for fast, continuous printing without per-page delays.
-- **Modern React UI**: Drag-and-drop upload, page previews, and real-time progress tracking.
+- **Fast Multi-page Printing**: Concatenates all pages into a single PWG stream — no per-page delays.
+- **Cross-Platform**: Works on macOS, Linux, and Windows (Node.js 18+).
+- **Modern React UI**: Drag-and-drop upload, page previews, real-time progress tracking.
+
+## Finding Your Printer's IPP Address
+
+You need an IPP URI like `ipp://192.168.1.x:631/ipp/print`. Here's how to find it on each OS:
+
+### macOS / Linux
+
+```bash
+lpstat -v
+```
+
+Look for lines containing `ipp://` — copy the full URI. Example output:
+
+```text
+device for HP_LaserJet: ipp://192.168.1.42:631/ipp/print
+```
+
+### Windows (PowerShell)
+
+```powershell
+Get-Printer | ForEach-Object {
+  $p = $_
+  $port = Get-PrinterPort -Name $p.PortName -ErrorAction SilentlyContinue
+  if ($port.PrinterHostAddress) {
+    Write-Output ($p.Name + " → " + $port.PrinterHostAddress)
+  }
+}
+```
+
+Take the IP address and build the URI: `ipp://<IP>:631/ipp/print`
+
+### Any OS (browser)
+
+Type your printer's IP address into a browser. Open **Settings → Network → IPP** (varies by printer brand) to find the IPP port and path.
+
+> **Tip:** Once you enter a valid URI in PrintFox and click **💾 Save**, it's stored in your browser and will be there every time you reload.
 
 ## Architecture
 
-The application consists of two main parts:
+The application consists of two parts:
 
 1. **Express Backend (`server.js`)**:
    - Handles PDF uploads and stores them temporarily in `uploads/`.
    - Converts PDFs to high-resolution PNGs using `pdf-to-img` (based on `pdfjs-dist`).
-   - Discovers local printers using `lpstat` (if available) or accepts custom IPP URIs.
-   - Processes print jobs:
-     - Reads PNGs and processes them with `sharp` (flattening, grayscale conversion).
-     - Encodes pixels to PWG Raster format.
-     - Concatenates pages into a single stream.
-     - Sends the job to the printer via IPP.
+   - Auto-discovers local printers: `lpstat` on macOS/Linux, PowerShell `Get-Printer` on Windows.
+   - Processes print jobs: reads PNGs with `sharp`, encodes to PWG Raster, concatenates, sends via IPP.
    - Streams progress back to the client using Server-Sent Events (SSE).
+   - Detects near-black pages (mean luma < 10) and emits a warning before sending.
 
 2. **React Frontend (`client/`)**:
-   - Built with Vite and React.
-   - Provides a user-friendly interface for uploading PDFs and configuring print settings.
-   - Displays low-resolution previews of the PDF pages.
-   - Communicates with the backend via REST APIs and listens to SSE for real-time print progress.
+   - Built with Vite and React 19.
+   - Saved printers stored in `localStorage` under `printfox_printers`.
+   - Auto-discovered printers merged with saved ones in the printer picker.
+   - Print Preview modal: shows filtered pages with live B&W filter, dark-page warnings, settings summary.
+   - Communicates with the backend via REST + SSE for real-time progress.
 
 ## Prerequisites
 
