@@ -1,0 +1,32 @@
+{
+  "name": "print-tool",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node server.js & npx vite",
+    "server": "node server.js",
+    "client": "npx vite",
+    "build": "npx vite build",
+    "start": "npx vite build && node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bitmap-to-pwg": "^1.0.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "ipp": "^1.1.0",
+    "multer": "^2.0.2",
+    "pdf-to-img": "^5.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.4",
+    "vite": "^7.3.1"
+  },
+  "type": "module"
+}
