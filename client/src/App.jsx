@@ -412,8 +412,8 @@ export default function App() {
         <div style={s.logo}>
           <PrintIcon />
         </div>
-        <span style={s.headerTitle}>🥷 PrintNinja</span>
-        <span style={s.headerSub}>300 DPI · Pure JS · No system tools · Stealth printing</span>
+        <span style={s.headerTitle}>� PrintFox</span>
+        <span style={s.headerSub}>300 DPI · Pure JS · No system tools · Clever printing</span>
       </header>
 
       <main style={s.main}>

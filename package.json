@@ -1,7 +1,7 @@
 {
-  "name": "printninja",
+  "name": "printfox",
   "version": "1.0.0",
-  "description": "Stealth PDF printer – no system tools, pure JS, direct IPP/PWG printing at 300 DPI",
+  "description": "Clever PDF printing – no system tools, pure JS, direct IPP/PWG at 300 DPI",
   "main": "index.js",
   "scripts": {
     "dev": "node server.js & npx vite",

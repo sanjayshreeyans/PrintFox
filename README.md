@@ -1,6 +1,6 @@
-# 🥷 PrintNinja
+# � PrintFox
 
-> *Stealth PDF printing — no drivers, no system tools, no permission needed.*
+> *Clever PDF printing — no drivers, no system tools, no permission needed.*
 
 A full-stack web application for converting and printing PDF documents directly to network printers via IPP (Internet Printing Protocol), bypassing system print drivers. Built specifically to work on locked-down environments (like school Macs) where system tools like `lp` or `pdf-poppler` are unavailable or broken.
 
