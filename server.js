@@ -151,7 +151,7 @@ app.post('/api/print', async (req, res) => {
         }
       }
     }
-    return [...pages].sort((a, b) => a - b);
+    return [...pages].sort((a, b) => b - a); // reverse order: last page first
   };
 
   try {
@@ -258,6 +258,9 @@ app.post('/api/print', async (req, res) => {
     jobs.delete(jobId);
   } catch (err) {
     send({ type: 'error', message: err.message });
+    // Clean up disk even on failure
+    try { fs.rmSync(path.join(__dirname, 'uploads', jobId), { recursive: true }); } catch {}
+    jobs.delete(jobId);
   }
 
   res.end();
