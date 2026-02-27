@@ -2,6 +2,8 @@
 
 > *Clever PDF printing — no drivers, no system tools, no permission needed.*
 
+![PrintFox UI](image.png)
+
 A full-stack web application for converting and printing PDF documents directly to network printers via IPP (Internet Printing Protocol), bypassing system print drivers. Built specifically to work on locked-down environments (like school Macs) where system tools like `lp` or `pdf-poppler` are unavailable or broken.
 
 ## Features
@@ -67,8 +69,8 @@ The application consists of two parts:
 
 ## Prerequisites
 
-- Node.js (v18 or higher recommended)
-- A network printer supporting IPP and PWG Raster format.
+- Node.js (v18 or higher recommended) - NodeJS can be installed without any admin privileges
+- A network printer supporting IPP and PWG Raster format. (MOST printers)
 
 ## Installation
 
